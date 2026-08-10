@@ -19,7 +19,7 @@ builder.Services.AddHttpClient("Anthropic", client =>
 {
     client.BaseAddress = new Uri("https://api.anthropic.com/");
     client.DefaultRequestHeaders.Add("x-api-key", builder.Configuration["Anthropic:ApiKey"]);
-    client.DefaultRequestHeaders.Add("antrhopic-version", "2023-06-01");
+    client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
 });
 
 var app = builder.Build();
@@ -77,11 +77,13 @@ app.MapPost("/api/qr/generate", async (QrRequest request, IHttpClientFactory htt
         For vCard: {"name": "Vukheta Maluleke", "phone": "072 745 4051", "email": "vukheta99@gmail.com"}
 
         If the input is ambiguous or you need more info, still make your best guess and return valid JSON.
+
+        Do NOT wrap the JSON in markdown backticks or code fences. Return raw JSON only, starting with { and ending with }.
     """;
 
     var body = new
     {
-        model = "claude-sonnet-4-6",
+        model = "claude-sonnet-4-5",
         max_tokens = 500,
         system = systemPrompt,
         messages = new[]
@@ -90,7 +92,7 @@ app.MapPost("/api/qr/generate", async (QrRequest request, IHttpClientFactory htt
         }
     };
 
-    var response = await client.PatchAsJsonAsync("v1/messages", body);
+    var response = await client.PostAsJsonAsync("v1/messages", body);
     var responseBody = await response.Content.ReadAsStringAsync();
 
     if (!response.IsSuccessStatusCode)
@@ -100,6 +102,12 @@ app.MapPost("/api/qr/generate", async (QrRequest request, IHttpClientFactory htt
 
     var anthropicResponse = JsonSerializer.Deserialize<AnthropicResponse>(responseBody);
     var textContent = anthropicResponse?.Content?.FirstOrDefault(c => c.Type == "text")?.Text;
+
+    // Clean markdown fences before parsing
+    textContent = textContent
+        ?.Replace("```json", "")
+        .Replace("```", "")
+        .Trim() ?? "";
 
     if (string.IsNullOrEmpty(textContent))
     {
